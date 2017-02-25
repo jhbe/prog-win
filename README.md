@@ -61,7 +61,7 @@ Dump the contents of selected memory areas:
 
 # Limitations
 
-There is currently no support for programming EEPROM variables (read: semi-static RAM). There's no technical reason for why it could not be added, I just never needed it.
+There is currently no support for programming data EEPROM (read: semi-static RAM). There's no technical reason for why it could not be added, I just never needed it.
 
 # Known Issues
 
@@ -70,4 +70,4 @@ Sometimes, and in particular with long (>100mm) leads between the programmer and
 # TODO
 
 * One failed verification is enough. Stop on first fail and do not print "Programmed!" at the end.
-* Support for EEPROM variables.
+* Support for data EEPROM.
