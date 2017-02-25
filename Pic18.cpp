@@ -411,6 +411,9 @@ void ReadDeviceId18()
 		case 0x5c60: printf(", a 18F24K50 rev %i", word & 0x001f); break;
 		case 0x5d20: printf(", a 18F26K50 rev %i", word & 0x001f); break;
 		case 0x5d60: printf(", a 18F46K50 rev %i", word & 0x001f); break;
+		case 0x1e00: printf(", a 18F1230 rev %i", word & 0x001f); break;
+		case 0x1e20: printf(", a 18F1330 rev %i", word & 0x001f); break;
+		case 0x1ee0: printf(", a 18F1330-ICD rev %i", word & 0x001f); break;
 		default: printf(", an unknown part"); break;
 		}
 		printf(".\n");
