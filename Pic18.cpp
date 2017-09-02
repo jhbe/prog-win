@@ -148,15 +148,31 @@ bool ReadBytes (unsigned int address, unsigned char *buffer, int length)
 //===========================================================================
 bool ProgramBytes (unsigned int address, unsigned char *buffer, int length)
 {
-	unsigned char command[20] = {
-		PROGRAMBYTES,
-		static_cast<unsigned char>((address & 0x00ff0000) >> 16),
-		static_cast<unsigned char>((address & 0x0000ff00) >> 8),
-		static_cast<unsigned char>((address & 0x000000ff) >> 0)
-	};
-	memcpy(&command[4], buffer, length);
+	//
+	// Some PIC18F devices (such as the PIC18F1330) have a write buffer
+	// size of 8. For simplicity, we make all programming adhere to that
+	// limit.
+	//
+	bool ok = true;
+	for (int i = 0; i < length && ok; i += 8) {
+		unsigned int addr = address + i;
+		int len = (length - i < 8) ? length - i : 8;
 
-	return Send(command, length + 4) && ReceiveOk18();
+		unsigned char command[12] = { // Four byte header plus eight bytes of data.
+			PROGRAMBYTES,
+			static_cast<unsigned char>((addr & 0x00ff0000) >> 16),
+			static_cast<unsigned char>((addr & 0x0000ff00) >> 8),
+			static_cast<unsigned char>((addr & 0x000000ff) >> 0)
+		};
+		memcpy(&command[4], &buffer[i], len);
+
+		ok = Send(command, len + 4);
+		if (ok) {
+			ok = ReceiveOk18();
+		}
+	}
+	
+	return ok;
 }
 
 //===========================================================================
@@ -275,6 +291,15 @@ void Program18()
 	//
 	Sleep(100);
 
+	//
+	// Read the device ID. Different devices use different config bytes, so we need to know what to verify.
+	//
+	unsigned char buffer[2];
+	if (!ReadBytes (0x3ffffe, buffer, 2)) {
+		return;
+	}
+	unsigned short int device_id = buffer[0] | (buffer[1] << 8);
+
 	do
 	{
 		//
@@ -282,7 +307,6 @@ void Program18()
 		//
 		for (int seg = 0; seg < g_number_of_segments; seg++)
 		{
-//				printf("\n(%i/%i, %08x, %04x) ", seg, segments, memory_segment[seg].address, memory_segment[seg].length);
 			if (g_memory_segment[seg].address < 0x300000)
 			{
 				//
@@ -337,29 +361,50 @@ void Program18()
 		{
 			unsigned char buffer[MAX_SEGMENT_LENGTH];
 
-//			printf("\n(%i/%i, %08x, %04x) ", seg, segments, memory_segment[seg].address, memory_segment[seg].length);
 			if (!ReadBytes  (g_memory_segment[seg].address, buffer, g_memory_segment[seg].length))
 			{
 				break;
 			}
-/*			for (int i = 0; i < memory_segment[seg].length; i++)
-			{
-				printf ("%02x (%02x) ",
-						memory_segment[seg].bytes[i],
-						buffer[i]);
-			}
-*/
+
 			for (int i = 0; i < g_memory_segment[seg].length; i++)
 			{
-				if (buffer[i] != g_memory_segment[seg].bytes[i]
-					&& g_memory_segment[seg].address + i != 0x00300004  // Unused configuration byte. Ignore.
-					&& g_memory_segment[seg].address + i != 0x00300007) // Unused configuration byte. Ignore.
+				//
+				// Not all config bytes are used on all devices. Unused ones
+				// are programmed 0xff, but read as 0x00, so they should not
+				// be verified.
+				//
+				boolean check_this_byte = true;
+				unsigned int addr = g_memory_segment[seg].address + i;
+				switch (device_id & 0xffe0) // Mask away the revision number.
+				{
+				case 0x1200:
+				case 0x1220:
+				case 0x1240:
+				case 0x1260:
+				case 0x5c00:
+				case 0x5c20:
+				case 0x5c60:
+				case 0x5d20:
+				case 0x5d60:
+					if (addr == 0x00300004) check_this_byte = false;
+					if (addr == 0x00300007) check_this_byte = false;
+					break;
+
+				case 0x1e00:
+				case 0x1e20:
+				case 0x1ee0:
+					if (addr == 0x00300000) check_this_byte = false;
+					if (addr == 0x00300007) check_this_byte = false;
+					break;
+				}
+
+				if (check_this_byte && buffer[i] != g_memory_segment[seg].bytes[i])
 				{
 					printf ("\n*** Verification Error: Byte %06x should be %02x, but reads as %02x.\n",
 							g_memory_segment[seg].address + i,
 							g_memory_segment[seg].bytes[i],
 							buffer[i]);
-					//error_found = true;
+					error_found = true;
 					break;
 				}
 			}
@@ -442,7 +487,7 @@ void DumpDevice18()
 	Sleep(100);
 
 	DumpDevice18(0x000000, 0x400);
-	DumpDevice18(0x000800, 0x1000);
+	//DumpDevice18(0x000800, 0x1000);
 	printf ("\nUser ID words:\n");
 	DumpDevice18(0x200000, 0x10);   // User ID words.
 	printf ("\nConfiguration words:\n");
